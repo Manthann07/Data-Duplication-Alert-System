@@ -1,14 +1,11 @@
 require('dotenv').config();
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
+const mongoose = require('mongoose');
 const morgan = require('morgan');
 const path = require('path');
 const fs = require('fs').promises;
-
-// Import routes
-const authRoutes = require('./src/routes/authRoutes');
-const fileRoutes = require('./src/routes/fileRoutes');
+const routes = require('./src/routes');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -47,8 +44,18 @@ createRequiredDirectories().catch(err => {
 // Middleware
 app.use(morgan('dev')); // Logging
 app.use(cors({
-  origin: 'http://localhost:3001', // Frontend URL
-  credentials: true
+  origin: ['http://localhost:8081', 'http://localhost:3000'], // Frontend URLs
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Accept',
+    'Origin',
+    'X-Requested-With'
+  ],
+  exposedHeaders: ['Content-Disposition', 'Content-Type'],
+  credentials: true,
+  maxAge: 86400 // Cache preflight request for 24 hours
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -56,25 +63,38 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/files', fileRoutes);
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message: 'Something went wrong!',
-    error: err.message
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  const isDbConnected = mongoose.connection.readyState === 1;
+  res.json({ 
+    status: isDbConnected ? 'ok' : 'error',
+    message: isDbConnected ? 'Server is running' : 'Database connection error',
+    dbStatus: isDbConnected ? 'connected' : 'disconnected',
+    dbName: mongoose.connection.db?.databaseName || 'not connected'
   });
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ 
+// Mount all routes under /api
+app.use('/api', routes);
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  
+  // Handle multer errors
+  if (err.name === 'MulterError') {
+    return res.status(400).json({
+      success: false,
+      message: 'File upload error',
+      error: err.message
+    });
+  }
+
+  // Handle other errors
+  res.status(err.status || 500).json({
     success: false,
-    message: `Route ${req.originalUrl} not found` 
+    message: err.message || 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
 });
 
@@ -82,7 +102,7 @@ app.use((req, res) => {
 const connectDB = async (retries = 3) => {
   for (let i = 0; i < retries; i++) {
     try {
-      await mongoose.connect('mongodb://localhost:27017/duplication-defender', {
+      await mongoose.connect(process.env.MONGODB_URI, {
         useNewUrlParser: true,
         useUnifiedTopology: true
       });
@@ -96,23 +116,14 @@ const connectDB = async (retries = 3) => {
   }
 };
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  const isDbConnected = mongoose.connection.readyState === 1;
-  res.json({ 
-    status: isDbConnected ? 'ok' : 'error',
-    message: isDbConnected ? 'Server is running' : 'Database connection error',
-    dbStatus: isDbConnected ? 'connected' : 'disconnected',
-    dbName: mongoose.connection.db?.databaseName || 'not connected'
-  });
-});
-
 // Start server
 const startServer = async () => {
   try {
     await connectDB();
     app.listen(port, () => {
       console.log(`Server is running on port ${port}`);
+      console.log(`API URL: http://localhost:${port}/api`);
+      console.log('MongoDB URI:', process.env.MONGODB_URI);
     });
   } catch (err) {
     console.error('Failed to start server:', err);

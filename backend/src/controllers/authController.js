@@ -97,64 +97,112 @@ exports.verifyEmail = async (req, res) => {
   }
 };
 
+const generateToken = (userId) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is not set in environment variables');
+  }
+  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '24h' });
+};
+
 exports.login = async (req, res) => {
   try {
-    console.log('Login request received:', { email: req.body.email });
+    console.log('Login attempt - Raw request body:', req.body);
     const { email, password } = req.body;
 
     // Validate input
     if (!email || !password) {
+      console.log('Missing credentials - Email:', !!email, 'Password:', !!password);
       return res.status(400).json({
         success: false,
-        message: 'Email and password are required'
+        message: 'Please provide email and password'
       });
     }
 
-    // Find user by email
+    // Check if user exists and include password for comparison
     const user = await User.findOne({ email }).select('+password');
+    console.log('User lookup result:', user ? 'Found' : 'Not found', 'Email:', email);
+    
     if (!user) {
       console.log('User not found:', email);
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid credentials'
       });
     }
 
+    console.log('User found:', user._id, 'Email verified:', user.isEmailVerified);
+
     // Check if email is verified
     if (!user.isEmailVerified) {
-      console.log('Email not verified for user:', email);
+      console.log('Email not verified for user:', user._id);
       return res.status(401).json({
         success: false,
         message: 'Please verify your email before logging in'
       });
     }
 
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      console.log('Invalid password for user:', email);
+    // Check password
+    const isMatch = await bcrypt.compare(password, user.password);
+    console.log('Password comparison result:', isMatch);
+    
+    if (!isMatch) {
+      console.log('Invalid password for user:', user._id);
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid credentials'
       });
     }
 
-    console.log('User logged in successfully:', user._id);
+    // Update last login time
+    user.lastLogin = new Date();
+    await user.save();
 
-    // Generate JWT token
+    // Generate token
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET || 'your-secret-key',
       { expiresIn: '24h' }
     );
 
-    // Remove password from response
-    user.password = undefined;
+    // Remove sensitive data
+    const userResponse = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      isEmailVerified: user.isEmailVerified
+    };
 
+    // Store user data in session
+    console.log('Login successful - Sending response:', {
+      success: true,
+      user: { ...userResponse, id: userResponse.id.toString() }
+    });
+    
     res.status(200).json({
       success: true,
       message: 'Login successful',
       token,
+      user: userResponse
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during login'
+    });
+  }
+};
+
+exports.getMe = async (req, res) => {
+  try {
+    console.log('Get me request received:', req.user._id);
+    
+    // User is already attached to req by auth middleware
+    const user = req.user;
+    
+    console.log('User profile fetched successfully:', user._id);
+    res.status(200).json({
+      success: true,
       user: {
         id: user._id,
         name: user.name,
@@ -162,25 +210,6 @@ exports.login = async (req, res) => {
         isEmailVerified: user.isEmailVerified
       }
     });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error logging in'
-    });
-  }
-};
-
-exports.getMe = async (req, res) => {
-  try {
-    console.log('Get me request received:', req.user.id);
-    const user = await User.findById(req.user.id).select('-password');
-    if (!user) {
-      console.log('User not found:', req.user.id);
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-    console.log('User profile fetched successfully:', user._id);
-    res.status(200).json({ success: true, user });
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ success: false, message: 'Error fetching profile' });

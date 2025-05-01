@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Table } from '../components/ui/table';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
-import { Search, Filter, Download, Plus, Trash2 } from 'lucide-react';
+import { Search, Filter, Download, Plus, Trash2, AlertTriangle, Eye } from 'lucide-react';
 import { datasetService } from '../services/datasetService';
 import { toast } from '../components/ui/use-toast';
 import { formatFileSize, formatDate } from '../utils/formatters';
@@ -26,7 +26,18 @@ const Records = () => {
       const response = await datasetService.getDatasets();
       console.log('Records response:', response);
       if (response.success) {
-        setRecords(response.files || []);
+        // Transform the response to include duplicate information
+        const transformedRecords = response.files.map(file => ({
+          _id: file.id,
+          name: file.filename,
+          department: file.department,
+          size: file.size,
+          createdAt: file.uploadDate,
+          description: file.description,
+          tags: file.tags,
+          duplicates: file.duplicates || null
+        }));
+        setRecords(transformedRecords);
       } else {
         throw new Error(response.message || 'Failed to fetch records');
       }
@@ -80,9 +91,14 @@ const Records = () => {
     }
   };
 
+  const handleViewDuplicates = (recordId) => {
+    console.log('Navigating to duplicates page for record:', recordId);
+    navigate(`/data-duplication/${recordId}`);
+  };
+
   const filteredRecords = records.filter(record => 
     (selectedDepartment === 'all' || record.department === selectedDepartment) &&
-    record.name.toLowerCase().includes(searchTerm.toLowerCase())
+    (record.name?.toLowerCase() || '').includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -162,6 +178,11 @@ const Records = () => {
                       {record.description && (
                         <div className="text-sm text-gray-500">{record.description}</div>
                       )}
+                      {record.duplicates && record.duplicates.hasDuplicates && (
+                        <div className="text-sm text-red-500 mt-1">
+                          {record.duplicates.duplicatePairs.length} duplicate(s) found
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">
@@ -177,14 +198,15 @@ const Records = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end space-x-2">
                         <button
-                          onClick={() => handleDownload(record._id)}
-                          className="text-blue-600 hover:text-blue-900"
+                          onClick={() => handleViewDuplicates(record._id)}
+                          className="px-3 py-1 text-sm text-blue-600 hover:text-blue-900 border border-blue-600 hover:border-blue-900 rounded-md transition-colors"
                         >
-                          <Download className="w-4 h-4" />
+                          View
                         </button>
                         <button
                           onClick={() => handleDelete(record._id)}
-                          className="text-red-600 hover:text-red-900"
+                          className="p-2 text-red-600 hover:text-red-900 hover:bg-red-50 rounded-md transition-colors"
+                          title="Delete Record"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

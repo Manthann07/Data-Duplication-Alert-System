@@ -1,163 +1,208 @@
 import React, { useState } from 'react';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Search, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { Download, Check, X, ArrowRight, FileDown } from 'lucide-react';
+import { toast } from '../components/ui/use-toast';
 
-const Duplicates = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [confidenceThreshold, setConfidenceThreshold] = useState(80);
+const DuplicateGroup = ({ group, similarity }) => {
+  const [status, setStatus] = useState('pending'); // pending, merged, kept_both
 
-  const duplicates = [
-    {
-      id: 1,
-      original: { name: 'Employee Data 2024', department: 'HR', date: '2024-02-20' },
-      duplicate: { name: 'Employee Data 2024', department: 'HR', date: '2024-02-21' },
-      confidence: 85,
-      status: 'pending'
-    },
-    {
-      id: 2,
-      original: { name: 'Sales Report Q1', department: 'Finance', date: '2024-02-19' },
-      duplicate: { name: 'Sales Report Q1', department: 'Finance', date: '2024-02-19' },
-      confidence: 92,
-      status: 'resolved'
-    },
-    {
-      id: 3,
-      original: { name: 'Marketing Campaign', department: 'Marketing', date: '2024-02-18' },
-      duplicate: { name: 'Marketing Campaign', department: 'Marketing', date: '2024-02-18' },
-      confidence: 78,
-      status: 'rejected'
-    }
-  ];
-
-  const filteredDuplicates = duplicates.filter(dup =>
-    dup.original.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    dup.duplicate.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'pending': return 'text-yellow-500';
-      case 'resolved': return 'text-green-500';
-      case 'rejected': return 'text-red-500';
-      default: return 'text-gray-500';
-    }
+  const handleDownload = () => {
+    toast({
+      title: "Download Started",
+      description: "Downloading records as CSV",
+      duration: 3000,
+    });
+    // Add API call to download
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'pending': return <AlertCircle className="w-5 h-5" />;
-      case 'resolved': return <CheckCircle2 className="w-5 h-5" />;
-      case 'rejected': return <XCircle className="w-5 h-5" />;
-      default: return null;
-    }
+  const handleMerge = () => {
+    setStatus('merged');
+    toast({
+      title: "Records Merged",
+      description: "The records have been successfully merged",
+      duration: 3000,
+    });
+  };
+
+  const handleKeepBoth = () => {
+    setStatus('kept_both');
+    toast({
+      title: "Keeping Both Records",
+      description: "Both records will be maintained separately",
+      duration: 3000,
+    });
   };
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Duplicate Detection</h1>
-        <p className="text-gray-600">Manage and resolve duplicate datasets</p>
-      </div>
-
-      <div className="flex gap-4 mb-6">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
-          <Input
-            placeholder="Search duplicates..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">Confidence:</span>
-          <Input
-            type="number"
-            min="0"
-            max="100"
-            value={confidenceThreshold}
-            onChange={(e) => setConfidenceThreshold(e.target.value)}
-            className="w-20"
-          />
-          <span className="text-sm text-gray-600">%</span>
-        </div>
-        <Button>Scan for Duplicates</Button>
-      </div>
-
-      <div className="space-y-4">
-        {filteredDuplicates.map((duplicate) => (
-          <div key={duplicate.id} className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-2">
-                <span className={getStatusColor(duplicate.status)}>
-                  {getStatusIcon(duplicate.status)}
-                </span>
-                <span className="text-sm font-medium text-gray-600">
-                  Match Confidence: {duplicate.confidence}%
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm">
-                  Ignore
-                </Button>
-                <Button size="sm">
-                  Merge
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium text-gray-900">Original Record</h3>
-                <div className="bg-gray-50 p-4 rounded-md">
-                  <dl className="space-y-1">
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Name:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.original.name}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Department:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.original.department}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Date:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.original.date}</dd>
-                    </div>
-                  </dl>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium text-gray-900">Duplicate Record</h3>
-                <div className="bg-gray-50 p-4 rounded-md">
-                  <dl className="space-y-1">
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Name:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.duplicate.name}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Department:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.duplicate.department}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-sm text-gray-500">Date:</dt>
-                      <dd className="text-sm text-gray-900">{duplicate.duplicate.date}</dd>
-                    </div>
-                  </dl>
-                </div>
-              </div>
-            </div>
+    <div className="mb-6 bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold text-gray-900">Group {group.id}</h3>
+            <span className="text-sm text-blue-600 font-medium">{similarity}% Similar</span>
+            {status !== 'pending' && (
+              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                status === 'merged' 
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-blue-100 text-blue-700'
+              }`}>
+                {status === 'merged' ? 'Merged' : 'Kept Both'}
+              </span>
+            )}
           </div>
-        ))}
+          
+          <div className="flex items-center gap-2">
+            {/* Download button - Always visible */}
+            <button
+              onClick={handleDownload}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Download
+            </button>
 
-        {filteredDuplicates.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No duplicates found.</p>
+            {status === 'pending' && (
+              <>
+                <button
+                  onClick={handleKeepBoth}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                  Keep Both
+                </button>
+                <button
+                  onClick={handleMerge}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Check className="w-4 h-4" />
+                  Merge Records
+                </button>
+              </>
+            )}
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Records Grid */}
+      <div className="grid grid-cols-2 divide-x divide-gray-200">
+        {/* Original Record */}
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-sm font-medium text-blue-600">Original Record</h4>
+            <span className="text-xs text-gray-500">Row {group.original.rowNumber}</span>
+          </div>
+          <div className="space-y-2">
+            {Object.entries(group.original).map(([key, value]) => (
+              key !== 'rowNumber' && (
+                <div key={key} className="grid grid-cols-2 gap-2">
+                  <span className="text-sm font-medium text-gray-500">{key}:</span>
+                  <span className="text-sm text-gray-900">{value}</span>
+                </div>
+              )
+            ))}
+          </div>
+        </div>
+
+        {/* Duplicate Record */}
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-sm font-medium text-amber-600">Duplicate #{group.duplicate.id}</h4>
+            <span className="text-xs text-gray-500">Row {group.duplicate.rowNumber}</span>
+          </div>
+          <div className="space-y-2">
+            {Object.entries(group.duplicate).map(([key, value]) => (
+              key !== 'rowNumber' && (
+                <div key={key} className="grid grid-cols-2 gap-2">
+                  <span className="text-sm font-medium text-gray-500">{key}:</span>
+                  <span className="text-sm text-gray-900">{value}</span>
+                </div>
+              )
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Duplicates = () => {
+  const handleDownloadAll = () => {
+    toast({
+      title: "Downloading All Records",
+      description: "Starting download of all records",
+      duration: 3000,
+    });
+    // Add API call to download all
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Duplicate Records</h1>
+          <p className="text-gray-600">Review and manage duplicate records in your dataset</p>
+        </div>
+        
+        {/* Main Download Button - Always visible */}
+        <button
+          onClick={handleDownloadAll}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <FileDown className="w-4 h-4" />
+          Download All Records
+        </button>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <FileDown className="w-5 h-5 text-blue-600" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-blue-900">Found 162 groups of duplicate records</h2>
+            <p className="text-sm text-blue-700">Download or manage duplicate records below</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Example duplicate group */}
+      <DuplicateGroup
+        group={{
+          id: 1,
+          original: {
+            rowNumber: 2,
+            index: 2,
+            customerId: "1Ef7b82A4CAAD10",
+            firstName: "Preston",
+            lastName: "Lozano",
+            company: "Vega-Gentry",
+            city: "East Jimmychester",
+            country: "Djibouti",
+            phone1: "5153435776",
+            phone2: "686-620-1820×944",
+            email: "vmata@colon.com",
+            subscriptionDate: "44309",
+            website: "http://www.hobbs.com/"
+          },
+          duplicate: {
+            id: 1,
+            rowNumber: 125,
+            index: 2,
+            customerId: "1Ef7b82A4CAAD10",
+            firstName: "Preston",
+            lastName: "Lozano",
+            company: "Vega-Gentry",
+            city: "East Jimmychester",
+            country: "Djibouti",
+            phone1: "5153435776",
+            phone2: "686-620-1820×944",
+            email: "vmata@colon.com",
+            subscriptionDate: "44309",
+            website: "http://www.hobbs.com/"
+          }
+        }}
+        similarity={100}
+      />
     </div>
   );
 };

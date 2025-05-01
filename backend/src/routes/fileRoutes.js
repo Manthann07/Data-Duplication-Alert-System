@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const auth = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const fileController = require('../controllers/fileController');
 
 // Configure multer for file upload
@@ -36,12 +36,20 @@ const upload = multer({
   }
 });
 
-// Routes
-router.post('/upload', auth, upload.single('file'), fileController.uploadFile);
+// Define routes without multer middleware where file upload is not needed
 router.get('/', auth, fileController.listFiles);
 router.get('/:id', auth, fileController.getFileById);
-router.get('/:id/download', auth, fileController.downloadFile);
+router.get('/download/:id/:format', auth, fileController.downloadFile);
 router.delete('/:id', auth, fileController.deleteFile);
+
+// Define routes that need multer middleware for file upload
+router.post('/upload', auth, upload.single('file'), fileController.uploadFile);
+
+// Check duplicates route - no file upload needed
 router.post('/:id/check-duplicates', auth, fileController.checkForDuplicatesHandler);
+
+// Duplicate handling routes
+router.post('/:id/duplicates/merge', auth, fileController.mergeDuplicateRecords);
+router.post('/:id/duplicates/keep-both', auth, fileController.keepBothRecords);
 
 module.exports = router;

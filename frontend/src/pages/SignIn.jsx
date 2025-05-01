@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_ENDPOINTS, checkServerHealth } from '../config/api';
 import { useToast } from '../components/ui/use-toast';
-import { login } from '../services/authService';
+import authService from '../services/authService';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
@@ -51,7 +51,7 @@ const SignIn = () => {
     setShowVerificationMessage(false);
 
     try {
-      await login(formData.email, formData.password);
+      await authService.login(formData.email, formData.password);
       toast({ title: "Success!", description: "Signed in successfully" });
       navigate('/dashboard');
     } catch (error) {

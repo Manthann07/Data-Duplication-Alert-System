@@ -5,25 +5,23 @@ const path = require('path');
 const fs = require('fs').promises;
 const { auth } = require('../middleware/auth');
 const fileController = require('../controllers/fileController');
+const { mergeDuplicateRecords, keepBothRecords } = require('../controllers/fileController');
 
 // Configure multer for file upload
 const storage = multer.diskStorage({
-    destination: async function (req, file, cb) {
+    destination: function(req, file, cb) {
         const tempDir = path.join(__dirname, '../../uploads/temp');
-        try {
-            await fs.access(tempDir);
-        } catch {
-            await fs.mkdir(tempDir, { recursive: true });
-        }
-        cb(null, tempDir);
+        void fs.access(tempDir)
+            .catch(() => fs.mkdir(tempDir, { recursive: true }))
+            .finally(() => cb(null, tempDir));
     },
-    filename: function (req, file, cb) {
+    filename: function(req, file, cb) {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, uniqueSuffix + '-' + file.originalname);
     }
 });
 
-const fileFilter = (req, file, cb) => {
+const fileFilter = function(req, file, cb) {
     console.log('Received file:', file);
     const allowedTypes = [
         'text/csv',
@@ -53,102 +51,148 @@ const upload = multer({
 });
 
 // Middleware to handle multer errors
-const handleMulterError = (err, req, res, next) => {
+function handleMulterError(err, req, res, next) {
     if (err) {
         console.error('Multer error:', err);
         if (err instanceof multer.MulterError) {
             if (err.code === 'LIMIT_FILE_SIZE') {
-                return res.status(400).json({
+                res.status(400).json({
                     success: false,
                     message: 'File size too large. Maximum size is 10MB.'
                 });
+                return;
             }
-            return res.status(400).json({
+            res.status(400).json({
                 success: false,
                 message: 'File upload error',
                 error: err.message
             });
+            return;
         }
-        return res.status(400).json({
+        res.status(400).json({
             success: false,
             message: err.message
         });
+        return;
     }
     next();
-};
+}
 
 // Authentication and File Upload Routes
-router.post('/upload', auth, (req, res, next) => {
+router.post('/upload', auth, function(req, res, next) {
     console.log('Upload route hit');
     console.log('Request headers:', req.headers);
     
-    upload.single('file')(req, res, async (err) => {
+    upload.single('file')(req, res, function(err) {
         if (err) {
-            return handleMulterError(err, req, res, next);
+            handleMulterError(err, req, res, next);
+            return;
         }
         
         if (!req.file) {
-            return res.status(400).json({
+            res.status(400).json({
                 success: false,
                 message: 'No file uploaded'
             });
+            return;
         }
 
         console.log('File received:', req.file);
         console.log('Form data:', req.body);
 
-        try {
-            const result = await fileController.uploadFile(req, res);
-            console.log('Upload result:', result);
-            return result;
-        } catch (error) {
-            console.error('Error in upload controller:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Error processing file',
-                error: error.message
+        void fileController.uploadFile(req, res)
+            .catch(function(error) {
+                console.error('Error in upload controller:', error);
+                if (!res.headersSent) {
+                    res.status(500).json({
+                        success: false,
+                        message: 'Error processing file',
+                        error: error.message
+                    });
+                }
             });
-        }
     });
 });
 
-router.post('/analyze', auth, (req, res, next) => {
+router.post('/analyze', auth, function(req, res, next) {
     console.log('Analyze route hit');
-    upload.single('file')(req, res, async (err) => {
+    
+    upload.single('file')(req, res, function(err) {
         if (err) {
-            console.error('Upload error:', err);
-            return handleMulterError(err, req, res, next);
+            handleMulterError(err, req, res, next);
+            return;
         }
+        
         console.log('File uploaded successfully, calling controller');
-        try {
-            const result = await fileController.checkForDuplicatesHandler(req, res);
-            console.log('Analyze result:', result);
-            return result;
-        } catch (error) {
-            console.error('Error in analyze controller:', error);
-            return res.status(500).json({
-                success: false,
-                message: 'Error processing file',
-                error: error.message
+        void fileController.checkForDuplicatesHandler(req, res)
+            .catch(function(error) {
+                console.error('Error in analyze controller:', error);
+                if (!res.headersSent) {
+                    res.status(500).json({
+                        success: false,
+                        message: 'Error processing file',
+                        error: error.message
+                    });
+                }
             });
-        }
     });
 });
 
 // File Retrieval and Deletion Routes
-router.get('/download/:id', auth, fileController.downloadFile);
-router.get('/list', auth, fileController.listFiles);
-router.get('/:id', auth, fileController.getFileById);
-router.delete('/:id', auth, fileController.deleteFile);
+router.get('/download/:id/:format?', auth, async (req, res) => {
+    try {
+        await fileController.downloadFile(req, res);
+    } catch (error) {
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: 'Error downloading file',
+                error: error.message
+            });
+        }
+    }
+});
+
+// Move this route after the download route to prevent conflicts
+router.get('/:id', auth, function(req, res) {
+    void fileController.getFileById(req, res)
+        .catch(function(error) {
+            if (!res.headersSent) {
+                res.status(500).json({
+                    success: false,
+                    message: 'Error getting file',
+                    error: error.message
+                });
+            }
+        });
+});
+
+router.delete('/:id', auth, function(req, res) {
+    void fileController.deleteFile(req, res)
+        .catch(function(error) {
+            if (!res.headersSent) {
+                res.status(500).json({
+                    success: false,
+                    message: 'Error deleting file',
+                    error: error.message
+                });
+            }
+        });
+});
+
+router.post('/:id/duplicates/merge', auth, fileController.mergeDuplicateRecords);
+router.post('/:id/duplicates/keep-both', auth, fileController.keepBothRecords);
 
 // Error handling middleware
-router.use((error, req, res, next) => {
+router.use(function(error, req, res, next) {
     console.error('Global error handler:', error);
-    res.status(500).json({
-        success: false,
-        message: 'Server error',
-        error: error.message
-    });
+    if (!res.headersSent) {
+        res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
 });
 
 module.exports = router;

@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -6,64 +7,70 @@ import { Upload, File, X, FileText } from 'lucide-react';
 import { toast } from '../components/ui/use-toast';
 import Loader3D from '../components/ui/Loader3D';
 import { datasetService } from '../services/datasetService';
-import { useNavigate } from 'react-router-dom';
+import authService from '../services/authService';
 
 const UploadDataset = () => {
   const navigate = useNavigate();
-  const [files, setFiles] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [metadata, setMetadata] = useState({
-    department: '',
+    department: 'Finance',
     description: '',
-    tags: ''
+    tags: []
   });
 
   useEffect(() => {
+    // Check authentication status
+    if (!authService.isAuthenticated()) {
+      toast({
+        variant: "destructive",
+        title: "Authentication Required",
+        description: "Please log in to upload files"
+      });
+      navigate('/signin');
+      return;
+    }
+
     // Show loading animation for 4 seconds to match the animation duration
     const timer = setTimeout(() => {
       setIsLoading(false);
-    }, 4000); // Changed from 1000 to 4000 to show full animation cycle
+    }, 4000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [navigate]);
 
-  const onDrop = useCallback(acceptedFiles => {
+  const onDrop = useCallback((acceptedFiles) => {
     console.log('Files dropped:', acceptedFiles);
-    setFiles(prev => [...prev, ...acceptedFiles.map(file => ({
-      file,
-      id: Math.random().toString(36).substr(2, 9)
-    }))]);
+    if (acceptedFiles.length > 0) {
+      setSelectedFile(acceptedFiles[0]);
+    }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'text/csv': ['.csv'],
+      'application/vnd.ms-excel': ['.xls'],
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/vnd.ms-excel': ['.xls']
+      'text/csv': ['.csv']
     },
-    maxSize: 10 * 1024 * 1024 // 10MB in bytes
+    maxFiles: 1,
+    maxSize: 10 * 1024 * 1024 // 10MB
   });
 
-  const removeFile = (fileId) => {
-    setFiles(files.filter(f => f.id !== fileId));
+  const handleMetadataChange = (e) => {
+    const { name, value } = e.target;
+    setMetadata(prev => ({
+      ...prev,
+      [name]: name === 'tags' ? value.split(',').map(tag => tag.trim()) : value
+    }));
   };
 
   const handleUpload = async () => {
-    if (!files.length) {
+    if (!selectedFile) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Please select files to upload"
-      });
-      return;
-    }
-
-    if (!metadata.department) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Please select a department"
+        description: "Please select a file to upload",
       });
       return;
     }
@@ -71,122 +78,148 @@ const UploadDataset = () => {
     try {
       setIsUploading(true);
       console.log('Starting file upload...');
+      console.log('Uploading file:', selectedFile.name);
 
-      for (const fileObj of files) {
-        if (!['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'].includes(fileObj.file.type)) {
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Please select a CSV, XLSX, or XLS file"
-          });
-          return;
-        }
-
-        const formData = new FormData();
-        formData.append('file', fileObj.file);
-        formData.append('department', metadata.department);
-        formData.append('description', metadata.description);
-        formData.append('tags', metadata.tags);
-
-        console.log('Uploading file:', fileObj.file.name);
-        const response = await datasetService.uploadDataset(formData);
-        console.log('Upload response:', response);
-
-        if (response.success) {
-          toast({
-            title: "Success",
-            description: "File uploaded successfully"
-          });
-        } else {
-          throw new Error(response.message || 'Upload failed');
-        }
+      // Check authentication
+      if (!authService.isAuthenticated()) {
+        throw new Error('Please sign in to upload files');
       }
 
-      // Redirect to Records page instead of Data Repository
+      const result = await datasetService.uploadDataset(selectedFile, metadata);
+      
+      toast({
+        title: "Success",
+        description: "File uploaded successfully",
+      });
+
+      // If there are duplicates, show a warning
+      if (result.duplicates && result.duplicates.length > 0) {
+        toast({
+          variant: "warning",
+          title: "Potential Duplicates Found",
+          description: `Found ${result.duplicates.length} potential duplicate(s)`,
+        });
+      }
+
       navigate('/records');
     } catch (error) {
       console.error('Upload error:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to upload files"
+        description: error.message || "Failed to upload file",
       });
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleMetadataChange = (e) => {
-    const { name, value } = e.target;
-    setMetadata(prev => ({
-      ...prev,
-      [name]: value
-    }));
+  const handleClear = () => {
+    setSelectedFile(null);
+    setMetadata({
+      department: 'Finance',
+      description: '',
+      tags: []
+    });
   };
 
   return (
-    <div className="container mx-auto px-4 py-5 max-w-3xl">
-      {isLoading ? (
-        <div className="flex items-center justify-center h-[calc(100vh-200px)]">
-          <Loader3D />
-        </div>
-      ) : (
-        <>
-          <div className="flex items-center gap-2 mb-4">
-            <h1 className="text-xl font-semibold">Upload Dataset</h1>
-            <p className="text-sm text-gray-600">Upload your data files for duplicate detection</p>
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-3xl mx-auto">
+        <h1 className="text-2xl font-bold mb-2">Upload Dataset</h1>
+        <p className="text-gray-600 mb-8">Upload your data files for duplicate detection</p>
+
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div
+            {...getRootProps()}
+            className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+              isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-500'
+            }`}
+          >
+            <input {...getInputProps()} />
+            <div className="flex flex-col items-center justify-center">
+              <svg
+                className="w-12 h-12 text-gray-400 mb-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                />
+              </svg>
+              <p className="text-gray-600">
+                Drag & drop files here, or click to select files
+              </p>
+              <p className="text-sm text-gray-500 mt-2">
+                Supported formats: CSV, XLSX, XLS (Max size: 10MB)
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            {/* Upload Area */}
-            <div 
-              {...getRootProps()} 
-              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
-                ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}
-            >
-              <input {...getInputProps()} />
-              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-600 mb-1">
-                {isDragActive ? 'Drop the files here' : 'Drag & drop files here, or click to select files'}
-              </p>
-              <p className="text-xs text-gray-500">Supported formats: CSV, XLSX, XLS (Max size: 10MB)</p>
-            </div>
-
-            {/* File List */}
-            {files.length > 0 && (
-              <div className="space-y-2">
-                <h2 className="text-sm font-semibold">Selected Files</h2>
-                {files.map(({ file, id }) => (
-                  <div key={id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm">{file.name}</span>
-                      <span className="text-xs text-gray-500">({(file.size / 1024).toFixed(2)} KB)</span>
-                    </div>
-                    <button
-                      onClick={() => removeFile(id)}
-                      className="p-1 hover:bg-gray-200 rounded"
-                    >
-                      <X className="w-4 h-4 text-gray-500" />
-                    </button>
+          {selectedFile && (
+            <div className="mt-4">
+              <h3 className="font-semibold mb-2">Selected Files</h3>
+              <div className="bg-gray-50 p-4 rounded-lg flex items-center justify-between">
+                <div className="flex items-center">
+                  <svg
+                    className="w-6 h-6 text-gray-400 mr-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <div>
+                    <p className="font-medium">{selectedFile.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {(selectedFile.size / 1024).toFixed(2)} KB
+                    </p>
                   </div>
-                ))}
+                </div>
+                <button
+                  onClick={() => setSelectedFile(null)}
+                  className="text-red-500 hover:text-red-700"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
               </div>
-            )}
+            </div>
+          )}
 
-            {/* File Information */}
-            <div className="space-y-3">
-              <h2 className="text-sm font-semibold">File Information</h2>
-              
+          <div className="mt-6">
+            <h3 className="font-semibold mb-4">File Information</h3>
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Department</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Department
+                </label>
                 <select
                   name="department"
                   value={metadata.department}
                   onChange={handleMetadataChange}
-                  className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
-                  <option value="">Select Department</option>
                   <option value="Finance">Finance</option>
                   <option value="HR">HR</option>
                   <option value="Sales">Sales</option>
@@ -196,56 +229,80 @@ const UploadDataset = () => {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Description</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
                 <textarea
                   name="description"
                   value={metadata.description}
                   onChange={handleMetadataChange}
-                  className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  rows="3"
-                  placeholder="Enter file description..."
+                  rows={3}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter a description for this dataset..."
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Tags</label>
-                <Input
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tags
+                </label>
+                <input
+                  type="text"
                   name="tags"
-                  value={metadata.tags}
+                  value={metadata.tags.join(', ')}
                   onChange={handleMetadataChange}
-                  placeholder="Enter tags (comma separated)"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter tags separated by commas..."
                 />
               </div>
             </div>
-
-            <div className="flex justify-between pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setFiles([])}
-                disabled={files.length === 0 || isUploading}
-              >
-                Clear All
-              </Button>
-              <Button
-                onClick={handleUpload}
-                disabled={files.length === 0 || isUploading}
-              >
-                {isUploading ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Uploading...
-                  </>
-                ) : (
-                  'Upload Files'
-                )}
-              </Button>
-            </div>
           </div>
-        </>
-      )}
+        </div>
+
+        <div className="flex justify-end space-x-4">
+          <button
+            onClick={handleClear}
+            className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Clear All
+          </button>
+          <button
+            onClick={handleUpload}
+            disabled={!selectedFile || isUploading}
+            className={`px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+              (!selectedFile || isUploading) && 'opacity-50 cursor-not-allowed'
+            }`}
+          >
+            {isUploading ? (
+              <div className="flex items-center">
+                <svg
+                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+                Uploading...
+              </div>
+            ) : (
+              'Upload Files'
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

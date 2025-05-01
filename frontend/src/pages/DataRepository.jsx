@@ -48,8 +48,9 @@ const DataRepository = () => {
   const filteredDatasets = datasets.filter(dataset => {
     // Search query filter
     const searchLower = searchQuery.toLowerCase();
-    const matchesSearch = dataset.name.toLowerCase().includes(searchLower) ||
-                         dataset.description.toLowerCase().includes(searchLower);
+    const matchesSearch = 
+      (dataset.name?.toLowerCase() || '').includes(searchLower) ||
+      (dataset.description?.toLowerCase() || '').includes(searchLower);
 
     // Department filter
     const matchesDepartment = !filters.department || dataset.department === filters.department;

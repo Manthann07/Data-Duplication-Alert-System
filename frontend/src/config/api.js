@@ -16,9 +16,10 @@ export const API_ENDPOINTS = {
   UPLOAD_FILE: `${API_BASE_URL}/files/upload`,
   GET_FILES: `${API_BASE_URL}/files`,
   GET_FILE: `${API_BASE_URL}/files/:id`,
-  DOWNLOAD_FILE: `${API_BASE_URL}/files/:id/download`,
+  DOWNLOAD_FILE: `${API_BASE_URL}/files/download/:id/:format`,
   DELETE_FILE: `${API_BASE_URL}/files/:id`,
   CHECK_DUPLICATES: `${API_BASE_URL}/files/:id/check-duplicates`,
+  ANALYZE_FILE: `${API_BASE_URL}/files/analyze`,
   HEALTH: `${API_BASE_URL}/health`,
   STATS: `${API_BASE_URL}/stats`
 };
@@ -62,7 +63,8 @@ export const handleApiError = async (response) => {
 // Check if user is authenticated
 export const isAuthenticated = () => {
   const token = localStorage.getItem('token');
-  return !!token;
+  const user = localStorage.getItem('user');
+  return !!(token && user);
 };
 
 // Helper function to check if the server is running

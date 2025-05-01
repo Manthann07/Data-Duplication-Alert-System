@@ -6,7 +6,7 @@ import Layout from './components/Layout';
 import Dashboard from "./pages/Dashboard";
 import DataRepository from "./pages/DataRepository";
 import UploadDataset from "./pages/UploadDataset";
-import Duplicates from './pages/Duplicates';
+import DataDuplication from './pages/DataDuplication';
 import Records from './pages/Records';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
@@ -17,6 +17,7 @@ import PrivateRoute from './components/PrivateRoute';
 import VerifyEmail from './pages/VerifyEmail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import authService from './services/authService';
 
 const queryClient = new QueryClient();
 
@@ -29,11 +30,11 @@ const router = createBrowserRouter([
   },
   {
     path: "/signin",
-    element: localStorage.getItem('token') ? <Navigate to="/dashboard" /> : <SignIn />
+    element: authService.isAuthenticated() ? <Navigate to="/dashboard" /> : <SignIn />
   },
   {
     path: "/signup",
-    element: localStorage.getItem('token') ? <Navigate to="/dashboard" /> : <SignUp />
+    element: authService.isAuthenticated() ? <Navigate to="/dashboard" /> : <SignUp />
   },
   {
     path: "/verify-email",
@@ -65,7 +66,11 @@ const router = createBrowserRouter([
       },
       {
         path: "duplicates",
-        element: <Duplicates />
+        element: <DataDuplication />
+      },
+      {
+        path: "data-duplication/:fileId",
+        element: <DataDuplication />
       },
       {
         path: "records",
@@ -84,7 +89,7 @@ const router = createBrowserRouter([
   // Catch-all route
   {
     path: "*",
-    element: localStorage.getItem('token') ? <Navigate to="/dashboard" /> : <Navigate to="/" />
+    element: authService.isAuthenticated() ? <Navigate to="/dashboard" /> : <Navigate to="/" />
   }
 ], {
   future: {

@@ -1,8 +1,8 @@
 import { Navigate } from 'react-router-dom';
-import { isAuthenticated } from '../services/authService';
+import authService from '../services/authService';
 
 const PrivateRoute = ({ children }) => {
-  if (!isAuthenticated()) {
+  if (!authService.isAuthenticated()) {
     return <Navigate to="/signin" />;
   }
 

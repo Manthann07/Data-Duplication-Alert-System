@@ -1,15 +1,15 @@
 const mongoose = require('mongoose');
 
 const fileSchema = new mongoose.Schema({
-  originalName: {
+  userId: {
     type: String,
     required: true
   },
-  fileName: {
+  filename: {
     type: String,
     required: true
   },
-  mimeType: {
+  path: {
     type: String,
     required: true
   },
@@ -17,34 +17,38 @@ const fileSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  path: {
+  mimetype: {
     type: String,
-    required: true
-  },
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
     required: true
   },
   department: {
     type: String,
-    required: true
+    default: 'General'
   },
   description: {
     type: String,
     default: ''
   },
   tags: [{
-    type: String
-  }],
-  status: {
     type: String,
-    enum: ['Active', 'Archived'],
-    default: 'Active'
+    trim: true
+  }],
+  uploadDate: {
+    type: Date,
+    default: Date.now
+  },
+  lastAccessed: {
+    type: Date,
+    default: Date.now
   },
   downloadCount: {
     type: Number,
     default: 0
+  },
+  status: {
+    type: String,
+    enum: ['Active', 'Archived'],
+    default: 'Active'
   },
   isDeleted: {
     type: Boolean,
@@ -58,12 +62,10 @@ const fileSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Add index for faster queries
-fileSchema.index({ userId: 1, originalName: 1 });
-fileSchema.index({ createdAt: -1 });
-fileSchema.index({ department: 1 });
+// Add indexes
+fileSchema.index({ userId: 1, uploadDate: -1 });
 fileSchema.index({ tags: 1 });
-fileSchema.index({ isDeleted: 1 });
+fileSchema.index({ filename: 'text', description: 'text', tags: 'text' });
 
 const File = mongoose.model('File', fileSchema);
 

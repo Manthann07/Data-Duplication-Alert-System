@@ -22,48 +22,71 @@ const User = require('../models/User');
  */
 const auth = async (req, res, next) => {
   try {
-    // Get token from Authorization header or cookie
-    const token = req.header('Authorization')?.replace('Bearer ', '') || 
-                 req.cookies?.token;
-    
-    if (!token) {
-      console.log('No authentication token provided');
-      return res.status(401).json({
+    if (!process.env.JWT_SECRET) {
+      console.error('JWT_SECRET is not set in environment variables');
+      return res.status(500).json({
         success: false,
-        message: 'Authentication required'
+        message: 'Server configuration error'
       });
     }
 
-    console.log('Verifying token...');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    if (!decoded || typeof decoded !== 'object') {
-      throw new Error('Invalid token');
+    // Get token from Authorization header
+    const authHeader = req.header('Authorization');
+    console.log('Auth header:', authHeader);
+
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: 'No authentication token provided'
+      });
     }
 
-    // Look for userId in decoded token
-    const userId = decoded.userId || decoded._id;
-    if (!userId) {
-      throw new Error('Invalid token format');
+    // Check if it's a Bearer token
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token format'
+      });
     }
 
-    console.log('Finding user with ID:', userId);
-    const user = await User.findById(userId);
+    // Extract the token
+    const token = authHeader.split(' ')[1];
+    console.log('Token being verified:', token);
 
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'No token found in Authorization header'
+      });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('Decoded token:', decoded);
+
+    if (!decoded.userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token: missing user ID'
+      });
+    }
+
+    // Find user in database
+    const user = await User.findById(decoded.userId).select('-password');
     if (!user) {
-      console.log('User not found with ID:', userId);
       return res.status(401).json({
         success: false,
         message: 'User not found'
       });
     }
 
-    console.log('User authenticated:', user._id);
-    req.token = token;
+    // Add user and userId to request
     req.user = user;
+    req.userId = user._id.toString(); // Add userId as string
     next();
   } catch (error) {
-    console.error('Authentication error:', error.message);
-    res.status(401).json({
+    console.error('Auth middleware error:', error);
+    return res.status(401).json({
       success: false,
       message: 'Invalid authentication token'
     });

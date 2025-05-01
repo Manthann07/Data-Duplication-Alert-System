@@ -1,9 +1,20 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from '../components/ui/use-toast';
-import { API_ENDPOINTS, API_CONFIG } from '../config/api';
+import { API_ENDPOINTS, getAuthHeaders } from '../config/api';
+import authService from '../services/authService';
 
 const Profile = () => {
-  const [user, setUser] = useState(null);
+  const navigate = useNavigate();
+  const [user, setUser] = useState(() => {
+    // Initialize from authService
+    const userData = authService.getUser();
+    if (!userData) {
+      console.log('No user data found in localStorage');
+    }
+    console.log('Initial user data:', userData);
+    return userData;
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
@@ -15,56 +26,55 @@ const Profile = () => {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) {
+        // First check if we have valid local data
+        const localUser = authService.getUser();
+        if (localUser && localUser.name && localUser.email) {
+          console.log('Using valid local user data:', localUser);
+          setUser(localUser);
           setIsLoading(false);
           return;
         }
 
-        const response = await fetch(`${API_ENDPOINTS.LOGIN}/me`, {
-          ...API_CONFIG,
-          headers: {
-            ...API_CONFIG.headers,
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch user data');
+        if (!authService.isAuthenticated()) {
+          console.log('User not authenticated, redirecting to login');
+          navigate('/signin');
+          return;
         }
 
-        const data = await response.json();
-        if (data.success && data.user) {
-          setUser(data.user);
-          localStorage.setItem('user', JSON.stringify(data.user));
+        // Try to refresh user data from the server
+        const userData = await authService.refreshUserData();
+        console.log('Refreshed user data from server:', userData);
+        if (userData && userData.name && userData.email) {
+          setUser(userData);
+          // Update local storage
+          authService.updateUserData(userData);
         } else {
-          throw new Error(data.message || 'Failed to fetch user data');
+          throw new Error('Invalid user data received from server');
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
-        // Try to get user data from localStorage as fallback
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-          try {
-            const userData = JSON.parse(storedUser);
-            setUser(userData);
-          } catch (e) {
-            console.error('Error parsing stored user data:', e);
-          }
-        }
         
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to refresh profile data. Showing cached data.",
-        });
+        // Final check for valid local data
+        const localUser = authService.getUser();
+        if (localUser && localUser.name && localUser.email) {
+          console.log('Falling back to cached user data:', localUser);
+          setUser(localUser);
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to load profile data. Please try logging in again.",
+          });
+          authService.logout();
+          navigate('/signin');
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchUserData();
-  }, []);
+  }, [navigate]);
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
@@ -78,22 +88,10 @@ const Profile = () => {
       return;
     }
 
-    if (passwordForm.newPassword.length < 6) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Password must be at least 6 characters long",
-      });
-      return;
-    }
-
     try {
-      const response = await fetch('http://localhost:5000/api/auth/change-password', {
+      const response = await fetch(API_ENDPOINTS.CHANGE_PASSWORD, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           currentPassword: passwordForm.currentPassword,
           newPassword: passwordForm.newPassword
@@ -133,6 +131,26 @@ const Profile = () => {
     );
   }
 
+  if (!user || !user.name || !user.email) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Profile Data Unavailable</h2>
+          <p className="text-gray-600 mb-4">Unable to load your profile data. Please try signing in again.</p>
+          <button
+            onClick={() => {
+              authService.logout();
+              navigate('/signin');
+            }}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Sign In
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -143,7 +161,7 @@ const Profile = () => {
               <div className="flex items-center">
                 <div className="h-32 w-32 rounded-full border-4 border-white bg-white shadow-lg flex items-center justify-center">
                   <span className="text-4xl font-bold text-blue-600">
-                    {user?.name?.[0]?.toUpperCase() || 'U'}
+                    {user.name?.[0]?.toUpperCase() || 'U'}
                   </span>
                 </div>
               </div>
@@ -156,8 +174,8 @@ const Profile = () => {
               {/* Left Column - Personal Info & Activity */}
               <div className="lg:col-span-2">
                 <div className="mb-8">
-                  <h1 className="text-2xl font-bold text-gray-900">{user?.name || 'User'}</h1>
-                  <p className="text-gray-500">{user?.email || 'No email provided'}</p>
+                  <h1 className="text-2xl font-bold text-gray-900">{user.name || 'Loading...'}</h1>
+                  <p className="text-gray-500">{user.email || 'Loading...'}</p>
                 </div>
 
                 <section className="mb-8">
@@ -165,11 +183,11 @@ const Profile = () => {
                   <div className="bg-gray-50 rounded-lg p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-500 mb-1">Full Name</label>
-                      <p className="text-gray-900 font-medium">{user?.name || 'Not provided'}</p>
+                      <p className="text-gray-900 font-medium">{user.name || 'Not available'}</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-500 mb-1">Email</label>
-                      <p className="text-gray-900 font-medium">{user?.email || 'Not provided'}</p>
+                      <p className="text-gray-900 font-medium">{user.email || 'Not available'}</p>
                     </div>
                   </div>
                 </section>

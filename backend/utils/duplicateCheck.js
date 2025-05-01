@@ -38,30 +38,63 @@ const readCSVFile = (filePath) => {
     }
 };
 
+const calculateValueSimilarity = (val1, val2) => {
+    if (val1 === val2) return 100;
+    if (!val1 || !val2) return 0;
+
+    // Handle numeric values
+    if (typeof val1 === 'number' && typeof val2 === 'number') {
+        const max = Math.max(Math.abs(val1), Math.abs(val2));
+        if (max === 0) return 100;
+        return (1 - Math.abs(val1 - val2) / max) * 100;
+    }
+
+    // Handle string values
+    const str1 = String(val1).toLowerCase().trim();
+    const str2 = String(val2).toLowerCase().trim();
+
+    if (str1 === str2) return 100;
+
+    let matches = 0;
+    const length = Math.max(str1.length, str2.length);
+    
+    for (let i = 0; i < Math.min(str1.length, str2.length); i++) {
+        if (str1[i] === str2[i]) matches++;
+    }
+
+    return (matches / length) * 100;
+};
+
+const calculateRecordSimilarity = (record1, record2) => {
+    const keys1 = Object.keys(record1);
+    const keys2 = Object.keys(record2);
+    const allKeys = [...new Set([...keys1, ...keys2])];
+    
+    if (allKeys.length === 0) return 0;
+
+    let totalSimilarity = 0;
+    let totalWeight = 0;
+
+    for (const key of allKeys) {
+        // Skip if key doesn't exist in both records
+        if (!record1.hasOwnProperty(key) || !record2.hasOwnProperty(key)) continue;
+
+        // Calculate weight based on field type
+        let weight = 1;
+        if (key.toLowerCase().includes('id')) weight = 0.5; // Less weight for IDs
+        if (key.toLowerCase().includes('name')) weight = 2; // More weight for names
+        
+        const similarity = calculateValueSimilarity(record1[key], record2[key]);
+        totalSimilarity += similarity * weight;
+        totalWeight += weight;
+    }
+
+    return totalWeight > 0 ? totalSimilarity / totalWeight : 0;
+};
+
 const compareRecords = (record1, record2) => {
     try {
-        const keys1 = Object.keys(record1);
-        const keys2 = Object.keys(record2);
-        
-        // Compare each field
-        let matchingFields = 0;
-        let totalFields = 0;
-
-        keys1.forEach(key => {
-            if (record2.hasOwnProperty(key)) {
-                totalFields++;
-                // Convert both values to strings and compare in lowercase
-                const value1 = String(record1[key]).toLowerCase().trim();
-                const value2 = String(record2[key]).toLowerCase().trim();
-                if (value1 === value2) {
-                    matchingFields++;
-                }
-            }
-        });
-
-        // Calculate similarity percentage
-        const similarity = totalFields > 0 ? (matchingFields / totalFields) * 100 : 0;
-        return similarity;
+        return calculateRecordSimilarity(record1, record2);
     } catch (error) {
         console.error('Error comparing records:', error);
         return 0;
